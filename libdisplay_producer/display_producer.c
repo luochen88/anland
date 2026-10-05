@@ -576,13 +576,9 @@ bool is_daemon_alive(display_ctx *ctx)
 
 void force_fallback(display_ctx *ctx)
 {
-    if (!ctx || ctx->fallback)
+    if (!ctx)
         return;
-
-    ctx->fallback = true;
-    if (ctx->pre_release_cb)
-        ctx->pre_release_cb(ctx->pre_release_userdata);
-    release_consumer_resources(ctx);
+    enter_fallback(ctx);
 }
 
 int try_exit_fallback(display_ctx *ctx)

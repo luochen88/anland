@@ -311,6 +311,18 @@ If you use a prebuilt RootFS, prefer the desktop startup command it provides. Fo
 startplasma-wayland
 ```
 
+MangoWM is also a supported native producer. With a Mango build configured using
+`-Danland=enabled` and the `display-producer` library installed, start it directly:
+
+```sh
+export ANLAND_SOCKET=/run/display.sock
+export ANLAND_DRM_DEVICE=/dev/dri/renderD128
+export XDG_RUNTIME_DIR=/run/user/$(id -u)
+exec mango -s 'mangobar'
+```
+
+MangoBar runs as a normal layer-shell client; it does not require an Anland fork.
+
 After starting the producer:
 
 - chroot users should open or switch back to the Anland Android app.
@@ -320,7 +332,8 @@ The desktop appears automatically after both the consumer and producer have conn
 
 > [!IMPORTANT]
 >
-> Do not start the session with your distribution's unpatched `kwin_wayland` or Mutter. A normal Wayland compositor will not submit frames to Anland even if it starts successfully.
+> Do not start the session with a compositor that lacks an Anland producer backend.
+> Use an Anland-patched KWin or Mutter, or MangoWM built with `-Danland=enabled`.
 
 ---
 

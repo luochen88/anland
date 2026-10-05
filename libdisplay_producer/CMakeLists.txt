@@ -16,7 +16,31 @@ set(DISPLAY_PRODUCER_SOURCES
     ../common/anland_present_ipc.c)
 
 add_library(display_producer SHARED ${DISPLAY_PRODUCER_SOURCES})
+set_target_properties(display_producer PROPERTIES
+    VERSION ${PROJECT_VERSION}
+    SOVERSION 5)
 target_include_directories(display_producer PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}
-    ${CMAKE_CURRENT_SOURCE_DIR}/../common)
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../common>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/anland>)
 target_link_libraries(display_producer PRIVATE socket_utils pthread PkgConfig::PIPEWIRE)
+
+configure_file(${CMAKE_CURRENT_SOURCE_DIR}/../display-producer.pc.in display-producer.pc @ONLY)
+install(TARGETS display_producer
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR})
+install(FILES
+    display_producer.h
+    anland_audio.h
+    anland_buffer_registry.h
+    anland_de_backend.h
+    anland_device.h
+    anland_present.h
+    anland_scene.h
+    anland_scene_legacy.h
+    anland_window_map.h
+    ../common/protocol.h
+    ../common/anland_present_ipc.h
+    ../common/anland_present_protocol.h
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/anland)
+install(FILES ${CMAKE_CURRENT_BINARY_DIR}/display-producer.pc
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig)

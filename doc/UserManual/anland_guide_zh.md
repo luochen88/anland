@@ -311,6 +311,18 @@ ANLAND_DRM_DEVICE=/dev/dri/renderD128
 startplasma-wayland
 ```
 
+MangoWM 也受支持，可作为原生 producer。安装 `display-producer` 库并用
+`-Danland=enabled` 构建 Mango 后，可直接启动：
+
+```sh
+export ANLAND_SOCKET=/run/display.sock
+export ANLAND_DRM_DEVICE=/dev/dri/renderD128
+export XDG_RUNTIME_DIR=/run/user/$(id -u)
+exec mango -s 'mangobar'
+```
+
+MangoBar 是普通 layer-shell 客户端，不需要 Anland 专用分支。
+
 启动 producer 后：
 
 - chroot 用户打开或切回 Android 的 Anland 应用。
@@ -320,7 +332,8 @@ consumer 和 producer 都连接成功后，桌面画面会自动出现。
 
 > [!IMPORTANT]
 >
-> 不要用发行版自带、未经 Anland 补丁处理的 `kwin_wayland` 或 Mutter 启动会话。普通 Wayland 合成器即使成功启动，也不会向 Anland 提交画面。
+> 不要使用不含 Anland producer backend 的合成器启动会话。请使用经过 Anland
+> 补丁处理的 KWin 或 Mutter，或使用 `-Danland=enabled` 构建的 MangoWM。
 
 ---
 

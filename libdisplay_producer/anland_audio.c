@@ -10,11 +10,16 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <limits.h>
+#include <pthread.h>
+#include <stdatomic.h>
 #include <time.h>
 #include <unistd.h>
 
 #include <pipewire/pipewire.h>
 #include <spa/param/audio/format-utils.h>
+#include <spa/param/props.h>
+#include <spa/pod/parser.h>
 #include <spa/pod/builder.h>
 #include <spa/utils/hook.h>
 
@@ -29,6 +34,10 @@
 #define MAX_DGRAM             (64 * 1024)
 /* Retry cadence after the PipeWire connection is lost (sound service restart, etc). */
 #define RECONNECT_SECS    1
+#define MIN_AUDIO_RATE       8000
+#define MAX_AUDIO_RATE     384000
+#define MAX_AUDIO_CHANNELS       2
+#define MAX_AUDIO_QUANTUM    65536
 
 struct anland_audio {
     struct pw_thread_loop *loop;
@@ -50,6 +59,13 @@ struct anland_audio {
     /* Requested buffer (frames) per stream from the consumer's latency preset;
      * 0 = let PipeWire choose the graph quantum. Applied as node.latency. */
     uint32_t               play_quantum, cap_quantum;
+    float                  play_volume;
+    bool                   play_muted;
+    char                   volume_state_path[PATH_MAX];
+    pthread_t              volume_thread;
+    atomic_bool            volume_running;
+    atomic_int             volume_percent;
+    atomic_bool            volume_muted;
 
     int                    audio_fd;  /* owned duplicate; -1 when detached */
     struct spa_source     *io;        /* loop io source watching audio_fd for reads */
@@ -64,6 +80,9 @@ struct anland_audio {
 
 static struct anland_audio *g_audio = NULL;
 
+static const struct spa_pod *build_props(struct spa_pod_builder *bld,
+                                         uint32_t channels, float volume,
+                                         bool mute);
 static int connect_stream(struct pw_stream *stream, enum spa_direction direction,
                           uint32_t rate, uint32_t channels, uint32_t quantum);
 static const struct spa_pod *build_format(struct spa_pod_builder *bld,
@@ -121,6 +140,54 @@ static void detach_audio_fd_locked(struct anland_audio *a)
     if (io)
         pw_loop_destroy_source(pw_thread_loop_get_loop(a->loop), io);
 }
+static void *volume_thread_main(void *data)
+{
+    struct anland_audio *a = data;
+    while (atomic_load_explicit(&a->volume_running, memory_order_relaxed)) {
+        FILE *f = fopen(a->volume_state_path, "r");
+        if (f) {
+            int pct;
+            int muted;
+            if (fscanf(f, "%d %d", &pct, &muted) == 2) {
+                if (pct < 0)
+                    pct = 0;
+                else if (pct > 150)
+                    pct = 150;
+                atomic_store_explicit(&a->volume_percent, pct, memory_order_relaxed);
+                atomic_store_explicit(&a->volume_muted, muted != 0,
+                                      memory_order_relaxed);
+            }
+            fclose(f);
+        }
+        struct timespec delay = { .tv_nsec = 100000000 };
+        nanosleep(&delay, NULL);
+    }
+    return NULL;
+}
+
+
+static void apply_playback_volume(struct anland_audio *a, uint8_t *data, size_t size)
+{
+    int pct = atomic_load_explicit(&a->volume_percent, memory_order_relaxed);
+    bool muted = atomic_load_explicit(&a->volume_muted, memory_order_relaxed);
+    if (muted || pct <= 0) {
+        memset(data, 0, size);
+        return;
+    }
+    if (pct == 100)
+        return;
+    float volume = (float)pct / 100.0f;
+    int16_t *samples = (int16_t *)data;
+    size_t count = size / sizeof(*samples);
+    for (size_t i = 0; i < count; i++) {
+        float scaled = (float)samples[i] * volume;
+        if (scaled > 32767.0f)
+            scaled = 32767.0f;
+        else if (scaled < -32768.0f)
+            scaled = -32768.0f;
+        samples[i] = (int16_t)scaled;
+    }
+}
 
 /* ---- stream process callbacks (run on the PipeWire thread loop) ---- */
 
@@ -135,6 +202,7 @@ static void on_capture_process(void *data)
 
     struct spa_data *d = &b->buffer->datas[0];
     if (d->data && d->chunk->size > 0 && a->audio_fd >= 0) {
+        apply_playback_volume(a, (uint8_t *)d->data + d->chunk->offset, d->chunk->size);
         struct audio_msg h = { .type = AUDIO_MSG_PCM, .size = d->chunk->size };
         struct iovec iov[2] = {
             { .iov_base = &h, .iov_len = sizeof(h) },
@@ -173,10 +241,27 @@ static void on_source_process(void *data)
     d->chunk->size = bytes;
     pw_stream_queue_buffer(a->source, b);
 }
+static void on_capture_param_changed(void *data, uint32_t id, const struct spa_pod *param)
+{
+    struct anland_audio *a = data;
+    if (id != SPA_PARAM_Props || param == NULL)
+        return;
+    float volume = a->play_volume;
+    bool mute = a->play_muted;
+    spa_pod_parse_object(param, SPA_TYPE_OBJECT_Props, NULL,
+        SPA_PROP_volume, SPA_POD_OPT_Float(&volume),
+        SPA_PROP_mute, SPA_POD_OPT_Bool(&mute));
+    if (volume < 0.0f)
+        volume = 0.0f;
+    a->play_volume = volume;
+    a->play_muted = mute;
+}
+
 
 static const struct pw_stream_events capture_events = {
     PW_VERSION_STREAM_EVENTS,
     .process = on_capture_process,
+    .param_changed = on_capture_param_changed,
 };
 
 static const struct pw_stream_events source_events = {
@@ -202,6 +287,15 @@ static const struct pw_stream_events source_events = {
  * legitimately varies between opens) just updates node.latency. Neither disconnects.
  *
  * Runs on the loop thread, so the pw_stream calls are safe. */
+static bool valid_format(const struct audio_format *f)
+{
+    return (f->role == AUDIO_ROLE_PLAYBACK || f->role == AUDIO_ROLE_CAPTURE) &&
+           f->format == AUDIO_FORMAT_S16LE &&
+           f->rate >= MIN_AUDIO_RATE && f->rate <= MAX_AUDIO_RATE &&
+           f->channels > 0 && f->channels <= MAX_AUDIO_CHANNELS &&
+           f->quantum <= MAX_AUDIO_QUANTUM;
+}
+
 static void apply_format(struct anland_audio *a, const struct audio_format *f)
 {
     const bool playback = (f->role == AUDIO_ROLE_PLAYBACK);
@@ -255,7 +349,7 @@ static void on_audio_readable(void *data, int fd, uint32_t mask)
         return;
 
     for (;;) {
-        ssize_t n = recv(fd, a->rx, sizeof(a->rx), MSG_DONTWAIT);
+        ssize_t n = recv(fd, a->rx, sizeof(a->rx), MSG_DONTWAIT | MSG_TRUNC);
         if (n == 0) {
             detach_audio_fd_locked(a);
             break;
@@ -267,24 +361,26 @@ static void on_audio_readable(void *data, int fd, uint32_t mask)
                 detach_audio_fd_locked(a);
             break;
         }
-        if ((size_t)n < sizeof(struct audio_msg))
+        if ((size_t)n > sizeof(a->rx) || (size_t)n < sizeof(struct audio_msg))
             continue;
         struct audio_msg h;
         memcpy(&h, a->rx, sizeof(h));
         size_t avail = (size_t)n - sizeof(struct audio_msg);
 
         if (h.type == AUDIO_MSG_FORMAT) {
-            if (avail >= sizeof(struct audio_format)) {
-                struct audio_format f;
-                memcpy(&f, a->rx + sizeof(struct audio_msg), sizeof(f));
+            if (h.size != sizeof(struct audio_format) || h.size != avail)
+                continue;
+            struct audio_format f;
+            memcpy(&f, a->rx + sizeof(struct audio_msg), sizeof(f));
+            if (valid_format(&f))
                 apply_format(a, &f);
-            }
             continue;
         }
-        if (h.type != AUDIO_MSG_PCM)
+        size_t frame_size = sizeof(int16_t) * a->cap_channels;
+        if (h.type != AUDIO_MSG_PCM || h.size != avail ||
+            frame_size == 0 || h.size % frame_size != 0)
             continue;
-        size_t size = h.size < avail ? h.size : avail;
-        ring_write(a, a->rx + sizeof(struct audio_msg), size);
+        ring_write(a, a->rx + sizeof(struct audio_msg), h.size);
     }
 }
 
@@ -336,6 +432,25 @@ static const struct spa_pod *build_format(struct spa_pod_builder *bld,
     return spa_format_audio_raw_build(bld, SPA_PARAM_EnumFormat, &info);
 }
 
+static const struct spa_pod *build_props(struct spa_pod_builder *bld,
+                                         uint32_t channels, float volume,
+                                         bool mute)
+{
+    if (channels == 0)
+        channels = 1;
+    if (channels > 8)
+        channels = 8;
+    float volumes[8];
+    for (uint32_t i = 0; i < channels; i++)
+        volumes[i] = volume;
+    return spa_pod_builder_add_object(bld,
+        SPA_TYPE_OBJECT_Props, SPA_PARAM_Props,
+        SPA_PROP_volume, SPA_POD_Float(volume),
+        SPA_PROP_mute, SPA_POD_Bool(mute),
+        SPA_PROP_channelVolumes,
+            SPA_POD_Array(sizeof(float), SPA_TYPE_Float, channels, volumes));
+}
+
 /* node.latency = "quantum/rate" asks PipeWire to run this node at that buffer size.
  * quantum == 0 leaves the graph default. Applied in place -- never re-plugs the node. */
 static void set_latency(struct pw_stream *stream, uint32_t quantum, uint32_t rate)
@@ -356,13 +471,16 @@ static int connect_stream(struct pw_stream *stream, enum spa_direction direction
 {
     set_latency(stream, quantum, rate);
 
-    uint8_t buffer[1024];
+    uint8_t buffer[1536];
     struct spa_pod_builder bld = SPA_POD_BUILDER_INIT(buffer, sizeof(buffer));
-    const struct spa_pod *params[1] = { build_format(&bld, rate, channels) };
+    const struct spa_pod *params[2] = {
+        build_format(&bld, rate, channels),
+        build_props(&bld, channels, 1.0f, false),
+    };
 
     return pw_stream_connect(stream, direction, PW_ID_ANY,
                              PW_STREAM_FLAG_AUTOCONNECT | PW_STREAM_FLAG_MAP_BUFFERS,
-                             params, 1);
+                             params, 2);
 }
 
 /* Tear down the core proxy and both streams, leaving the loop, context, timer, mic
@@ -499,6 +617,13 @@ int anland_audio_start(void)
     a->play_channels = DEFAULT_PLAY_CHANNELS;
     a->cap_rate = DEFAULT_RATE;
     a->cap_channels = DEFAULT_CAP_CHANNELS;
+    a->play_volume = 1.0f;
+    atomic_init(&a->volume_percent, 100);
+    atomic_init(&a->volume_muted, false);
+    atomic_init(&a->volume_running, false);
+    const char *runtime_dir = getenv("XDG_RUNTIME_DIR");
+    snprintf(a->volume_state_path, sizeof(a->volume_state_path), "%s/anland-volume-state",
+             runtime_dir && runtime_dir[0] ? runtime_dir : "/tmp");
     a->ring_size = MIC_RING_BYTES;
     a->ring = malloc(a->ring_size);
     if (!a->ring)
@@ -532,6 +657,13 @@ int anland_audio_start(void)
     }
     pw_thread_loop_unlock(a->loop);
 
+    atomic_store_explicit(&a->volume_running, true, memory_order_relaxed);
+    if (pthread_create(&a->volume_thread, NULL, volume_thread_main, a) != 0) {
+        atomic_store_explicit(&a->volume_running, false, memory_order_relaxed);
+        pw_thread_loop_stop(a->loop);
+        teardown_pw(a);
+        goto fail;
+    }
     g_audio = a;
     return 0;
 
@@ -554,6 +686,8 @@ void anland_audio_stop(void)
     if (!a)
         return;
     g_audio = NULL;
+    if (atomic_exchange_explicit(&a->volume_running, false, memory_order_relaxed))
+        pthread_join(a->volume_thread, NULL);
 
     if (a->loop)
         pw_thread_loop_stop(a->loop);

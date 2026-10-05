@@ -1,5 +1,8 @@
 cmake_minimum_required(VERSION 3.10)
-project(anland C)
+project(anland VERSION 5.0.0 LANGUAGES C)
+
+include(GNUInstallDirs)
+find_package(PkgConfig QUIET)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra -Wpedantic")
@@ -29,5 +32,9 @@ else()
 
     add_library(display_consumer SHARED libdisplay_consumer/display_consumer.c)
     target_link_libraries(display_consumer socket_utils pthread)
+    install(TARGETS display_daemon
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+    install(TARGETS display_consumer
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR})
 
 endif()

@@ -24,6 +24,29 @@
 - [Anland User Guide](doc/UserManual/anland_guide.md) - install Anland and connect a supported Wayland desktop through chroot or Droidspaces.
 - [Anland Settings Guide](doc/UserManual/anland_settings_guide.md) - configure input, display, connection, audio, and window behavior in the Android app.
 
+
+## Mango Anland 5 stack
+
+This branch installs `libdisplay_producer` as SONAME 5, installs producer headers under `${prefix}/include/anland`, and installs the pkg-config module with the exact name `display-producer`.
+
+Build and install it after wlroots and SceneFX, before Mango:
+
+```sh
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local
+cmake --build build --parallel
+sudo cmake --install build
+pkg-config --modversion display-producer
+```
+
+The expected `pkg-config --modversion display-producer` output is `5.0.0`.
+
+Stack order:
+
+1. [wlroots `anland5`](https://github.com/luochen88/wlroots/tree/anland5)
+2. [SceneFX `anland5`](https://github.com/luochen88/scenefx/tree/anland5)
+3. [Anland `anland5`](https://github.com/luochen88/anland/tree/anland5)
+4. [Mango `anland5`](https://github.com/luochen88/mango/tree/anland5)
+
 ---
 
 ## 1. Roles
