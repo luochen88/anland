@@ -1,0 +1,3 @@
+usr/lib/*/libdisplay_producer.so
+usr/lib/*/pkgconfig/display-producer.pc
+usr/include/anland/

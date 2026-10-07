@@ -1,0 +1,28 @@
+Source: anland
+Section: libs
+Priority: optional
+Maintainer: Anland Maintainers <noreply@example.invalid>
+Build-Depends:
+ debhelper-compat (= 13),
+ cmake (>= 3.10),
+ ninja-build,
+ pkgconf,
+ libpipewire-0.3-dev
+Standards-Version: 4.7.0
+Rules-Requires-Root: no
+Homepage: https://github.com/luochen88/anland
+
+Package: libdisplay-producer5
+Architecture: any
+Multi-Arch: same
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: Anland display producer runtime library
+ Runtime library for Anland producer-side compositor integration.
+
+Package: libdisplay-producer-dev
+Section: libdevel
+Architecture: any
+Multi-Arch: same
+Depends: libdisplay-producer5 (= ${binary:Version}), ${misc:Depends}
+Description: Anland display producer development files
+ Headers, linker symlink, and pkg-config metadata for the Anland producer API.
