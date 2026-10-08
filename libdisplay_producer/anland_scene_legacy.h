@@ -79,6 +79,9 @@ anland_device *anland_scene_legacy_device(anland_scene_legacy *b);
 bool anland_scene_legacy_connected(anland_scene_legacy *b);
 /* False while a consumed ACK still owes slot retirement. Session may stay up. */
 bool anland_scene_legacy_target_available(anland_scene_legacy *b);
+/* Stronger additive query: the current slot is writable now, with no pending
+ * or in-flight handoff and no retained buffers for that slot. */
+bool anland_scene_legacy_renderable(anland_scene_legacy *b);
 
 /* Attempt to leave fallback; returns 0 when connected. Safe to call repeatedly
  * (this is what a DE reconnect timer drives). On a successful transition any

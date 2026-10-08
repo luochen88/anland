@@ -37,6 +37,8 @@ anland_device *anland_present_device(anland_present *present);
 bool anland_present_connected(const anland_present *present);
 /* Connection alone does not guarantee a writable target during release retry. */
 bool anland_present_target_available(const anland_present *present);
+/* Stronger query used by event-driven renderers before selecting a slot. */
+bool anland_present_renderable(const anland_present *present);
 
 /* Preserve scene/layer identity. reopen replaces a dead daemon connection;
  * reconnect picks up a consumer on the existing daemon connection. A new

@@ -45,6 +45,13 @@ typedef struct anland_de_target {
 int anland_de_backend_get_target(const anland_de_backend *backend,
                                  anland_de_target_t *out);
 
+/* Writable target for event-driven renderers. Unlike get_target(), this
+ * refuses an accepted/in-flight frame, a retained current slot, release retry,
+ * or a cached target which no longer matches the device's raw slot. On failure
+ * *out is cleared. Calls are serialized by the DE event loop. */
+int anland_de_backend_get_writable_target(const anland_de_backend *backend,
+                                          anland_de_target_t *out);
+
 /* Complete current device output description for a live session. */
 int anland_de_backend_get_output(const anland_de_backend *backend,
                                  anland_device_output_t *out);

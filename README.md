@@ -40,6 +40,18 @@ pkg-config --modversion display-producer
 
 The expected `pkg-config --modversion display-producer` output is `5.0.0`.
 
+The producer facade exposes both cached-target and writable-target queries. Renderers
+must use the writable query before selecting a buffer; it rejects pending/in-flight
+commits, retained slots, stale generations, and release-publication retries. Scene
+outcomes are drained before buffers are retired, and all release fence descriptors
+remain owned by the event consumer until they are imported or closed.
+
+The Mango integration keeps the daemon endpoint configurable through `ANLAND_SOCKET`.
+Protocol/state-machine smoke tests use a unique socket in `/tmp` and a private daemon;
+no production daemon is required for build or validation. DMA-BUF reservation-fence
+imports and visual scanout still require real GPU hardware and are not covered by the
+CPU-only smoke path.
+
 Stack order:
 
 1. [wlroots `anland5`](https://github.com/luochen88/wlroots/tree/anland5)

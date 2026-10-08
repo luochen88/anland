@@ -252,6 +252,24 @@ int anland_de_backend_get_target(const anland_de_backend *backend,
     return 0;
 }
 
+int anland_de_backend_get_writable_target(const anland_de_backend *backend,
+                                          anland_de_target_t *out)
+{
+    if (!out)
+        return -1;
+    memset(out, 0, sizeof(*out));
+    if (!backend || !anland_present_renderable(backend->present) ||
+        anland_de_backend_get_target(backend, out) != 0)
+        return -1;
+
+    anland_device *device = anland_present_device(backend->present);
+    if (!device || anland_device_current_fb_raw(device) != (int)out->index) {
+        memset(out, 0, sizeof(*out));
+        return -1;
+    }
+    return 0;
+}
+
 int anland_de_backend_get_output(const anland_de_backend *backend,
                                  anland_device_output_t *out)
 {
@@ -296,11 +314,6 @@ int anland_de_backend_pump(anland_de_backend *backend, int timeout_ms)
     const int rc = anland_present_pump(backend->present, timeout_ms);
     if (!anland_present_connected(backend->present))
         clear_display_cache(backend);
-    else if (rc != 0) {
-        /* Release retry blocks rendering, not the live output's geometry. */
-        backend->have_target = false;
-        memset(&backend->target, 0, sizeof(backend->target));
-    }
     return rc;
 }
 int anland_de_backend_reconnect(anland_de_backend *backend)

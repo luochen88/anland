@@ -51,6 +51,11 @@ bool anland_present_target_available(const anland_present *present)
     return present && anland_scene_legacy_target_available(present->transport);
 }
 
+bool anland_present_renderable(const anland_present *present)
+{
+    return present && anland_scene_legacy_renderable(present->transport);
+}
+
 int anland_present_reconnect(anland_present *present)
 {
     return present ? anland_scene_legacy_reconnect(present->transport) : -1;

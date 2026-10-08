@@ -1,3 +1,10 @@
+anland (5.0.0-2anland5) trixie; urgency=medium
+
+  * Add writable-target facade validation for retained and in-flight slots.
+  * Preserve release-fence ownership and event-drain ordering across retries.
+
+ -- Anland Maintainers <noreply@example.invalid>  Thu, 08 Oct 2026 00:46:22 +0000
+
 anland (5.0.0-1anland5) trixie; urgency=medium
 
   * Package the Anland 5 display producer library.

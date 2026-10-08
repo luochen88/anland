@@ -28,6 +28,7 @@ libdisplay_producer.so.5 libdisplay-producer5 #MINVER#
  anland_de_backend_drop_session@Base 5.0.0-1anland5
  anland_de_backend_get_output@Base 5.0.0-1anland5
  anland_de_backend_get_target@Base 5.0.0-1anland5
+ anland_de_backend_get_writable_target@Base 5.0.0-2anland5
  anland_de_backend_lookup_window_layer@Base 5.0.0-1anland5
  anland_de_backend_present@Base 5.0.0-1anland5
  anland_de_backend_present_object@Base 5.0.0-1anland5
@@ -77,6 +78,7 @@ libdisplay_producer.so.5 libdisplay-producer5 #MINVER#
  anland_present_pump@Base 5.0.0-1anland5
  anland_present_reconnect@Base 5.0.0-1anland5
  anland_present_reopen@Base 5.0.0-1anland5
+ anland_present_renderable@Base 5.0.0-2anland5
  anland_present_scene@Base 5.0.0-1anland5
  anland_present_target_available@Base 5.0.0-1anland5
  anland_scene_backend_dropped@Base 5.0.0-1anland5
@@ -111,6 +113,7 @@ libdisplay_producer.so.5 libdisplay-producer5 #MINVER#
  anland_scene_legacy_reconnect@Base 5.0.0-1anland5
  anland_scene_legacy_reconnects@Base 5.0.0-1anland5
  anland_scene_legacy_reopen@Base 5.0.0-1anland5
+ anland_scene_legacy_renderable@Base 5.0.0-2anland5
  anland_scene_legacy_scene@Base 5.0.0-1anland5
  anland_scene_legacy_target_available@Base 5.0.0-1anland5
  anland_scene_pending_events@Base 5.0.0-1anland5

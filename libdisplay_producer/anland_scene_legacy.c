@@ -365,6 +365,17 @@ bool anland_scene_legacy_target_available(anland_scene_legacy *b)
            !b->retirement_pending && anland_device_is_connected(b->dev);
 }
 
+bool anland_scene_legacy_renderable(anland_scene_legacy *b)
+{
+    if (!anland_scene_legacy_target_available(b) ||
+        b->pending_commit || b->inflight_commit)
+        return false;
+
+    const int slot = anland_device_current_fb_raw(b->dev);
+    return slot >= 0 && slot < anland_device_fb_count(b->dev) &&
+           slot < ANLAND_DEVICE_MAX_BUFS && b->retained_count[slot] == 0;
+}
+
 int anland_scene_legacy_reconnect(anland_scene_legacy *b)
 {
     if (!b)
